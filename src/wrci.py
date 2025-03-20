@@ -55,39 +55,6 @@ class PipelineParser:
                 if stack:
                     current_block = stack.pop()  # Return to previous block
 
-    def o1parse(self):
-        """Parses tokens into an Abstract Syntax Tree (AST) with structured blocks."""
-        iterator = iter(self.tokens)
-        stack = []  # Stack to keep track of nested IF/ELSE blocks
-        current_block = self.ast
-
-        for line in iterator:
-            if match := re.match(r'PIPELINE\(helper_image="(.+?)"(?:, start_command="(.+?)")?(?:, name="(.+?)")?\)', line):
-                self.variables["helper_image"] = match.group(1)
-                start_command = match.group(2) if match.group(2) else None
-                name = match.group(3) if match.group(3) else None
-                new_pipeline = {"type": "PIPELINE", "helper_image": match.group(1), "start_command": start_command, "name": name, "body": []}
-                current_block.append(new_pipeline)
-                stack.append((current_block, new_pipeline))
-                current_block = new_pipeline["body"]
-            elif match := re.match(r'STEP (.+)', line):
-                current_block.append({"type": "STEP", "script": match.group(1)})
-            elif match := re.match(r'IF \$(\w+) == (\d+):', line):
-                new_if_block = {"type": "IF", "variable": match.group(1), "value": int(match.group(2)), "then": []}
-                current_block.append(new_if_block)
-                stack.append((current_block, new_if_block, "then"))
-                current_block = new_if_block["then"]
-            elif match := re.match(r'ELSE:', line):
-                if stack:
-                    _, last_if_block, _ = stack[-1]
-                    last_if_block["else"] = []
-                    current_block = last_if_block["else"]
-            elif match := re.match(r'MSG\("(.+?)"\)', line):
-                current_block.append({"type": "MSG", "message": match.group(1)})
-            elif match := re.match(r'END', line):
-                if stack:
-                    current_block, _ = stack.pop()[:2]
-
     def get_ast(self):
         """Returns the parsed AST."""
         return {"variables": self.variables, "ast": self.ast}
@@ -176,47 +143,6 @@ class PipelineExecutor:
                     skip_else = True
             elif node["type"] == "ELSE" and not skip_else:
                 self.execute_block(node["body"], container_id, pipeline_name)
-
-
-    def o2execute_block(self, block, container_id, pipeline_name=None):
-        """Executes a block of statements, handling PIPELINE, IF, ELSE, and other tasks."""
-        for node in block:
-            if node["type"] == "PIPELINE":
-                if node["name"] in self.running_containers:
-                    container_id = self.running_containers[node["name"]]
-                else:
-                    container_id = self.start_container(node)
-                self.execute_block(node["body"], container_id, node["name"])
-            elif node["type"] == "MSG":
-                print(f"Message: {node['message']}")
-            elif node["type"] == "STEP":
-                self.run_step(node["script"], pipeline_name, container_id)
-            elif node["type"] == "IF":
-                if self.last_rc == node["value"]:
-                    self.execute_block(node["body"], container_id, pipeline_name)
-                elif "else" in node:
-                    self.execute_block(node["else"]["body"], container_id, pipeline_name)
-            elif node["type"] == "ELSE":
-                self.execute_block(node["body"], container_id, pipeline_name)
-
-
-    def o1execute_block(self, block, container_id):
-        for node in block:
-            if node["type"] == "MSG":
-                print(f"Message: {node['message']}")
-            elif node["type"] == "STEP":
-                self.run_step(node["script"], None, container_id)
-            elif node["type"] == "IF":
-                if self.last_rc == node["value"]:
-                    self.execute_block(node["then"], container_id)
-                elif "else" in node:
-                    self.execute_block(node["else"], container_id)
-
-    def o1execute(self):
-        for node in self.ast:
-            if node["type"] == "PIPELINE":
-                self.run_pipeline(node)
-        self.stop_all_containers()
 
 
 dsl_script = """
