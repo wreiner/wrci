@@ -1,3 +1,3 @@
 #!/bin/sh
 
-./target/colors | grep red
+/target/colors | grep red
