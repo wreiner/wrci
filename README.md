@@ -12,9 +12,9 @@ PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", na
 
 The first pipeline must have a `helper_image` defined. A docker container based on this image will be started.
 
-Every nested pipeline can omit a helper image. If this parameter is omitted for a nested pipeline, the steps will be run inside the parents container.
+Every nested pipeline can omit a helper image. If this parameter is omitted for a nested pipeline, the steps will be run inside the parents container. If a helper image is configured a new container will be started and the steps of the nested pipeline will be run inside this new container.
 
-Every pipeline must define a `name` throught this parameter.
+Every pipeline must define a `name` through the `name` parameter. The `name` should correspond to a directory under `.wrci` and is used for running steps.
 
 The parameter `start_command` is completely optional.
 
