@@ -218,8 +218,10 @@ class PipelineExecutor:
                 self.execute_block(node["body"], container_id, node["name"])
 
             elif node["type"] == "MSG":
-                print("in MSG")
-                print(f"Message: {node['message']}")
+                msg = node["message"]
+                for var_name, var_value in self.variables.items():
+                    msg = msg.replace(f"${var_name}", str(var_value))
+                print(f"Message: {msg}")
 
             elif node["type"] == "STEP":
                 self.run_step(node["script"], pipeline_name, container_id)
