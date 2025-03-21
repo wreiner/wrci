@@ -197,7 +197,9 @@ class PipelineExecutor:
             print(f"Using parent container for pipeline '{pipeline_name}'")
 
         self.execute_block(pipeline["body"], container_id, pipeline_name)
-        self.stop_all_containers()
+
+        # Return the container used so the parent can continue with it
+        return parent_container_id if pipeline.get("helper_image") else container_id
 
     def execute(self):
         try:
@@ -215,7 +217,12 @@ class PipelineExecutor:
 
         for node in block:
             if node["type"] == "PIPELINE":
-                container_id = self.run_pipeline(node, parent_container_id=container_id)
+                # Save the original container before entering nested pipeline
+                current_container_id = container_id
+                # Run nested pipeline, possibly creating a new container
+                returned_container_id = self.run_pipeline(node, parent_container_id=container_id)
+                # Restore original container for outer block
+                container_id = current_container_id
 
             elif node["type"] == "MSG":
                 msg = node["message"]
