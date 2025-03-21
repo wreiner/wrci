@@ -185,6 +185,7 @@ class PipelineExecutor:
         print(result.stdout)
         print(result.stderr)
         self.last_rc = result.returncode
+        self.variables["LAST_RC"] = str(self.last_rc)
 
     def run_pipeline(self, pipeline, parent_container_id=None):
         pipeline_name = pipeline.get("name")
@@ -215,7 +216,6 @@ class PipelineExecutor:
         for node in block:
             if node["type"] == "PIPELINE":
                 container_id = self.run_pipeline(node, parent_container_id=container_id)
-                self.execute_block(node["body"], container_id, node["name"])
 
             elif node["type"] == "MSG":
                 msg = node["message"]
