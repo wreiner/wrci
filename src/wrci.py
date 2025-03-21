@@ -33,20 +33,29 @@ class PipelineParser:
         current_block = self.ast
 
         for line in iterator:
-            if match := re.match(r'PIPELINE\(helper_image="(.+?)"(?:, start_command="(.+?)")?(?:, name="(.+?)")?\)', line):
-                helper_image = match.group(1)
-                self.variables["helper_image"] = helper_image
-                start_command = match.group(2) if match.group(2) else None
-                self.variables["start_command"] = start_command
-                pipline_name = match.group(3) if match.group(3) else None
-                self.variables["pipline_name"] = pipline_name
+            if match := re.match(r'PIPELINE\((.*?)\)', line):
+                params_str = match.group(1)
+                params = dict(re.findall(r'(\w+)="(.*?)"', params_str))
+
+                helper_image = params.get("helper_image")
+                start_command = params.get("start_command")
+                pipeline_name = params.get("name")
+
+                if helper_image:
+                    self.variables["helper_image"] = helper_image
+                if start_command:
+                    self.variables["start_command"] = start_command
+                if pipeline_name:
+                    self.variables["pipeline_name"] = pipeline_name
+
                 new_pipeline = {
                     "type": "PIPELINE",
-                    "helper_image": match.group(1),
+                    "helper_image": helper_image,
                     "start_command": start_command,
-                    "name": pipline_name,
+                    "name": pipeline_name,
                     "body": []
                 }
+
                 current_block.append(new_pipeline)
                 stack.append(current_block)
                 current_block = new_pipeline["body"]
@@ -105,23 +114,74 @@ class PipelineExecutor:
         self.last_rc = 0
         self.running_containers = {}
 
-    def start_container(self, pipeline):
-        """Starts a persistent container for the pipeline if not already running."""
+    def start_container(self, pipeline, parent_container_id=None):
         pipeline_name = pipeline.get("name")
+        helper_image = pipeline.get("helper_image")
+
+        if not pipeline_name:
+            raise ValueError("Pipeline must have a 'name' to assign a container")
+
         if pipeline_name in self.running_containers:
-            print(f"Using existing container for pipeline {pipeline_name}")
+            print(f"Using existing container for pipeline '{pipeline_name}'")
             return self.running_containers[pipeline_name]
 
-        image = pipeline["helper_image"]
+        if not helper_image:
+            if parent_container_id:
+                print(f"Reusing parent container for pipeline '{pipeline_name}'")
+                return parent_container_id
+            else:
+                raise ValueError(f"Cannot start pipeline '{pipeline_name}': no helper_image and no parent container")
+
         start_command = pipeline.get("start_command")
-        print(f"Starting container for pipeline {pipeline_name} with image: {image}")
+        print(f"Starting container '{pipeline_name}' with image: {helper_image}")
+
         mount_path = "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/.wrci:/pipeline"
-        command = ["docker", "run", "-d", "--rm", "-v", mount_path, "-v", "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/testpipeline-src:/src", image]
+        command = [
+            "docker", "run", "-d", "--rm",
+            "--name", pipeline_name,
+            "-v", mount_path,
+            "-v", "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/testpipeline-src:/src",
+            helper_image
+        ]
         if start_command:
             command.extend(["/bin/sh", "-c", start_command])
+
         result = subprocess.run(command, capture_output=True, text=True)
         container_id = result.stdout.strip()
-        print(f"Container started with ID: {container_id}")
+        print(f"Container '{pipeline_name}' started with ID: {container_id}")
+
+        self.running_containers[pipeline_name] = container_id
+        return container_id
+
+    def ostart_container(self, pipeline):
+        """Starts a persistent container for the pipeline if not already running."""
+        pipeline_name = pipeline.get("name")
+        if not pipeline_name:
+            raise ValueError("Pipeline must have a 'name' to assign a container")
+
+        if pipeline_name in self.running_containers:
+            print(f"Using existing container for pipeline '{pipeline_name}'")
+            return self.running_containers[pipeline_name]
+
+        image = pipeline.get("helper_image")
+        start_command = pipeline.get("start_command")
+        print(f"Starting container '{pipeline_name}' with image: {image}")
+
+        mount_path = "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/.wrci:/pipeline"
+        command = [
+            "docker", "run", "-d", "--rm",
+            "--name", pipeline_name,  # 🔥 name container explicitly
+            "-v", mount_path,
+            "-v", "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/testpipeline-src:/src",
+            image
+        ]
+        if start_command:
+            command.extend(["/bin/sh", "-c", start_command])
+
+        result = subprocess.run(command, capture_output=True, text=True)
+        container_id = result.stdout.strip()
+        print(f"Container '{pipeline_name}' started with ID: {container_id}")
+
         self.running_containers[pipeline_name] = container_id
         return container_id
 
@@ -153,8 +213,8 @@ class PipelineExecutor:
         print(result.stderr)
         self.last_rc = result.returncode
 
-    def run_pipeline(self, pipeline):
-        container_id = self.start_container(pipeline)
+    def run_pipeline(self, pipeline, parent_container_id=None):
+        container_id = self.start_container(pipeline, parent_container_id)
         self.execute_block(pipeline["body"], container_id)
         self.stop_all_containers()
 
@@ -163,7 +223,7 @@ class PipelineExecutor:
         try:
             for node in self.ast:
                 if node["type"] == "PIPELINE":
-                    container_id = self.start_container(node)
+                    container_id = self.run_pipeline(node, parent_container_id=None)
                     self.execute_block(node["body"], container_id, node["name"])
         except ExecutionStopped:
             print("Execution exited early due to EXIT command.")
@@ -177,17 +237,18 @@ class PipelineExecutor:
 
         for node in block:
             if node["type"] == "PIPELINE":
-                if node["name"] in self.running_containers:
-                    container_id = self.running_containers[node["name"]]
-                else:
-                    container_id = self.start_container(node)
+                container_id = self.run_pipeline(node, parent_container_id=container_id)
                 self.execute_block(node["body"], container_id, node["name"])
+
             elif node["type"] == "MSG":
                 print(f"Message: {node['message']}")
+
             elif node["type"] == "STEP":
                 self.run_step(node["script"], pipeline_name, container_id)
+
             elif node["type"] == "ASSIGN":
                 self.variables[node["name"]] = node["value"]
+
             elif node["type"] == "IF":
                 var_name = node["variable"]
                 operator = node.get("operator", "==")  # default to '=='
@@ -196,22 +257,19 @@ class PipelineExecutor:
 
                 if operator == "==" and str(actual) == str(expected):
                     self.execute_block(node["body"], container_id, pipeline_name)
+
                 elif operator == "!=" and str(actual) != str(expected):
                     self.execute_block(node["body"], container_id, pipeline_name)
+
                 elif "else" in node:
                     self.execute_block(node["else"]["body"], container_id, pipeline_name)
-            elif node["type"] == "oIF":
-                condition_var = node["variable"]
-                condition_value = node["value"]
-                var_value = self.last_rc
 
-                if var_value == condition_value:
-                    self.execute_block(node["body"], container_id, pipeline_name)
-                    skip_else = True
             elif node["type"] == "ELSE" and not skip_else:
                 self.execute_block(node["body"], container_id, pipeline_name)
+
             elif node["type"] == "END":
                         return
+
             elif node["type"] == "EXIT":
                 raise ExecutionStopped()
 
@@ -223,11 +281,17 @@ PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", na
 
     $wrciarch = "armv7"
 
-    PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="deploy")
+    PIPELINE(name="deploy")
         MSG("Inner pipeline")
         EXIT
         MSG("End of Inner pipeline")
     END
+
+    # PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="deploy")
+    #     MSG("Inner pipeline")
+    #     EXIT
+    #     MSG("End of Inner pipeline")
+    # END
 
     STEP step-envvar.sh
 
