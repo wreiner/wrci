@@ -2,7 +2,6 @@ import argparse
 import re
 import subprocess
 import pprint
-import sys
 
 
 class ExecutionStopped(Exception):
@@ -238,7 +237,7 @@ class PipelineExecutor:
 
             elif node["type"] == "IF":
                 var_name = node["variable"]
-                operator = node.get("operator", "==")  # default to '=='
+                operator = node.get("operator", "==")
                 expected = node["value"]
                 actual = self.variables.get(var_name)
 
@@ -273,7 +272,6 @@ if __name__ == "__main__":
         parser.tokenize()
         parser.parse()
         parsed_ast = parser.get_ast()
-        print(parsed_ast)
 
         print("Parsed AST:")
         pprint.pprint(parsed_ast)
