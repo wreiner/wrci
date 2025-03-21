@@ -1,0 +1,28 @@
+PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="compile-verify")
+
+    MSG("Starting steps")
+
+    $arch = "armv7"
+    IF $arch == "armv7":
+        MSG("$arch is armv7")
+    ELSE:
+        MSG("$arch is not armv7")
+    END
+
+    STEP step-prepare.sh
+    STEP step-patch.sh
+    #STEP step-fail.sh
+    STEP step-compile.sh
+    STEP step-validate.sh
+
+    IF $LAST_RC != "0":
+        MSG("Validation failed with exit code $LAST_RC")
+        EXIT
+    END
+
+    PIPELINE(name="deploy")
+        MSG("Will deploy new version")
+        STEP step-deploy.sh
+    END
+
+END

@@ -2,6 +2,6 @@
 
 int main()
 {
-    printf("Color: blue");
+    printf("Color: blue\n");
     return 0;
 }
