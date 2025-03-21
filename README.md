@@ -10,7 +10,15 @@ CI DSL for Model Driven Development  lecture at FHJ.
 PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="compile-verify")
 ```
 
-Every pipeline must be closed with the `END` keyword.
+The first pipeline must have a `helper_image` defined. A docker container based on this image will be started.
+
+Every nested pipeline can omit a helper image. If this parameter is omitted for a nested pipeline, the steps will be run inside the parents container.
+
+Every pipeline must define a `name` throught this parameter.
+
+The parameter `start_command` is completely optional.
+
+Every pipeline block must be closed with the `END` keyword.
 
 ### Pipeline Variables
 
@@ -26,13 +34,14 @@ Special variables are the properties of the `PIPELINE` as well as the variable `
 
 ### STEP
 
-`STEP` will run the executable, most likely a script, placed under `.wrci/<pipeline_name>/<executable_name>`. It cannot run arbitrary commands directly.
+`STEP` will run the executable, most likely a script, placed under `.wrci/<pipeline_name>/<executable_name>` in the container which is referenced in the pipeline the step is part of. It cannot run commands directly, only executables. The executable must have the +x flag set.
 
 ```
 STEP step-prepare.sh
 ```
 
 Every `STEP` will collect its last return code in the variable `LAST_RC` which can be used in conditionals.
+
 The pipeline will not stop if a `STEP` fails but will continue.
 
 ### MSG
@@ -65,7 +74,24 @@ Nested conditionals are supported but every conditional can only have a single s
 
 `EXIT` will exit the pipeline at the point it is called, and will stop all running containers.
 
-## Examples
+### Examples
 
 For testing there are a set of pipelines which can be used as examples.
 They can be found in the directory `tests/testpipelines`.
+
+## Run `wrci`
+
+To run `wrci` a pipeline file and the bind mounts for the docker container are needed.
+
+Example:
+
+```
+python wrci.py \
+    --pipelinefile tests/testpipelines/var_if_else.wrci \
+    -v ".wrci:/pipeline" \
+    -v "testpipeline-src:/src"
+```
+
+If for a the local directory part of the bind mount is not an absolute path, the current working directory will be automatically added as a prefix.
+
+- `-v "testpipeline-src:/src"` will become `-v "${pwd}/testpipeline-src:/src"`

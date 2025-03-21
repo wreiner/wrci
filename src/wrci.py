@@ -1,7 +1,8 @@
 import argparse
+import os
+import pprint
 import re
 import subprocess
-import pprint
 
 
 class ExecutionStopped(Exception):
@@ -108,11 +109,12 @@ class PipelineParser:
 
 
 class PipelineExecutor:
-    def __init__(self, ast):
+    def __init__(self, ast, volumes=None):
         self.ast = ast["ast"]
         self.variables = ast["variables"]
         self.last_rc = 0
         self.running_containers = {}
+        self.volumes = volumes or []
 
     def start_container(self, pipeline, parent_container_id=None):
         pipeline_name = pipeline.get("name")
@@ -135,16 +137,24 @@ class PipelineExecutor:
 
         print(f"Starting container '{pipeline_name}' with image: {helper_image}")
 
-        mount_path = "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/.wrci:/pipeline"
         command = [
             "docker", "run", "-d", "--rm",
-            "--name", pipeline_name,
-            "-v", mount_path,
-            "-v", "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/testpipeline-src:/src",
-            helper_image
+            "--name", pipeline_name
         ]
+
+        # Add all -v volumes
+        for volume in self.volumes:
+            host, container = volume.split(":", 1)
+            if not os.path.isabs(host):
+                host = os.path.abspath(os.path.join(os.getcwd(), host))
+            command.extend(["-v", f"{host}:{container}"])
+
+        command.append(helper_image)
+
         if start_command:
             command.extend(["/bin/sh", "-c", start_command])
+
+        print(f"Running command: {' '.join(command)}")
 
         result = subprocess.run(command, capture_output=True, text=True)
         container_id = result.stdout.strip()
@@ -263,6 +273,7 @@ class PipelineExecutor:
 if __name__ == "__main__":
     parser_cli = argparse.ArgumentParser(description="Run WRCI pipeline")
     parser_cli.add_argument("--pipelinefile", required=True, help="Path to the pipeline file to run")
+    parser_cli.add_argument("-v", "--volume", action="append", help="Bind mount a volume (host:container)", default=[])
     args = parser_cli.parse_args()
 
     with open(args.pipelinefile, "r") as f:
@@ -278,5 +289,5 @@ if __name__ == "__main__":
         print("End of AST\n")
 
         print("Executing pipeline...")
-        executor = PipelineExecutor(parsed_ast)
+        executor = PipelineExecutor(parsed_ast, volumes=args.volume)
         executor.execute()
