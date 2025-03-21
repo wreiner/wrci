@@ -92,6 +92,6 @@ python wrci.py \
     -v "testpipeline-src:/src"
 ```
 
-If for a the local directory part of the bind mount is not an absolute path, the current working directory will be automatically added as a prefix.
+If a the local directory part of the bind mount is not an absolute path, the current working directory will be automatically added as a prefix.
 
 - `-v "testpipeline-src:/src"` will become `-v "${pwd}/testpipeline-src:/src"`
