@@ -1,0 +1,17 @@
+PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="compile-verify")
+
+    MSG("Outer pipeline")
+
+    $wrciarch = "armv7"
+
+    PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="deploy")
+        MSG("Inner pipeline")
+        STEP step-envvar.sh
+        EXIT
+        MSG("End of Inner pipeline")
+    END
+
+    STEP step-envvar.sh
+
+    MSG("End of outer pipeline")
+END
