@@ -255,7 +255,7 @@ class PipelineExecutor:
                 self.execute_block(node["body"], container_id, pipeline_name)
 
             elif node["type"] == "END":
-                        return
+                return
 
             elif node["type"] == "EXIT":
                 raise ExecutionStopped()
