@@ -1,3 +1,4 @@
+import argparse
 import re
 import subprocess
 import pprint
@@ -219,6 +220,7 @@ class PipelineExecutor:
                 self.execute_block(node["body"], container_id, node["name"])
 
             elif node["type"] == "MSG":
+                print("in MSG")
                 print(f"Message: {node['message']}")
 
             elif node["type"] == "STEP":
@@ -252,38 +254,22 @@ class PipelineExecutor:
                 raise ExecutionStopped()
 
 
-dsl_script = """
-PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="compile-verify")
+if __name__ == "__main__":
+    parser_cli = argparse.ArgumentParser(description="Run WRCI pipeline")
+    parser_cli.add_argument("--pipelinefile", required=True, help="Path to the pipeline file to run")
+    args = parser_cli.parse_args()
 
-    MSG("Outer pipeline")
+    with open(args.pipelinefile, "r") as f:
+        dsl_script = f.read()
 
-    $wrciarch = "armv7"
+        parser = PipelineParser(dsl_script)
+        parser.tokenize()
+        parser.parse()
+        parsed_ast = parser.get_ast()
+        print(parsed_ast)
 
-    PIPELINE(name="deploy")
-        MSG("Inner pipeline")
-        STEP step-envvar.sh
-        EXIT
-        MSG("End of Inner pipeline")
-    END
+        pprint.pprint(parsed_ast)
+        # sys.exit(1)
 
-    # PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="deploy")
-    #     MSG("Inner pipeline")
-    #     EXIT
-    #     MSG("End of Inner pipeline")
-    # END
-
-    STEP step-envvar.sh
-
-    MSG("End of outer pipeline")
-END
-"""
-
-parser = PipelineParser(dsl_script)
-parser.tokenize()
-parser.parse()
-parsed_ast = parser.get_ast()
-
-pprint.pprint(parsed_ast)
-
-executor = PipelineExecutor(parsed_ast)
-executor.execute()
+        executor = PipelineExecutor(parsed_ast)
+        executor.execute()
