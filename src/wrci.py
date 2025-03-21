@@ -117,6 +117,7 @@ class PipelineExecutor:
     def start_container(self, pipeline, parent_container_id=None):
         pipeline_name = pipeline.get("name")
         helper_image = pipeline.get("helper_image")
+        start_command = pipeline.get("start_command")
 
         if not pipeline_name:
             raise ValueError("Pipeline must have a 'name' to assign a container")
@@ -127,12 +128,11 @@ class PipelineExecutor:
 
         if not helper_image:
             if parent_container_id:
-                print(f"Reusing parent container for pipeline '{pipeline_name}'")
+                print(f"Pipeline '{pipeline_name}' has no helper_image. Reusing parent container.")
                 return parent_container_id
             else:
-                raise ValueError(f"Cannot start pipeline '{pipeline_name}': no helper_image and no parent container")
+                raise ValueError(f"Cannot start pipeline '{pipeline_name}': no helper_image and no parent container.")
 
-        start_command = pipeline.get("start_command")
         print(f"Starting container '{pipeline_name}' with image: {helper_image}")
 
         mount_path = "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/.wrci:/pipeline"
@@ -148,40 +148,12 @@ class PipelineExecutor:
 
         result = subprocess.run(command, capture_output=True, text=True)
         container_id = result.stdout.strip()
+
+        if result.returncode != 0:
+            print(result.stderr)
+            raise RuntimeError(f"Failed to start container for pipeline '{pipeline_name}'")
+
         print(f"Container '{pipeline_name}' started with ID: {container_id}")
-
-        self.running_containers[pipeline_name] = container_id
-        return container_id
-
-    def ostart_container(self, pipeline):
-        """Starts a persistent container for the pipeline if not already running."""
-        pipeline_name = pipeline.get("name")
-        if not pipeline_name:
-            raise ValueError("Pipeline must have a 'name' to assign a container")
-
-        if pipeline_name in self.running_containers:
-            print(f"Using existing container for pipeline '{pipeline_name}'")
-            return self.running_containers[pipeline_name]
-
-        image = pipeline.get("helper_image")
-        start_command = pipeline.get("start_command")
-        print(f"Starting container '{pipeline_name}' with image: {image}")
-
-        mount_path = "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/.wrci:/pipeline"
-        command = [
-            "docker", "run", "-d", "--rm",
-            "--name", pipeline_name,  # 🔥 name container explicitly
-            "-v", mount_path,
-            "-v", "/home/wreiner/tmp/_sem6-swd22/MDD/wrci/testpipeline-src:/src",
-            image
-        ]
-        if start_command:
-            command.extend(["/bin/sh", "-c", start_command])
-
-        result = subprocess.run(command, capture_output=True, text=True)
-        container_id = result.stdout.strip()
-        print(f"Container '{pipeline_name}' started with ID: {container_id}")
-
         self.running_containers[pipeline_name] = container_id
         return container_id
 
@@ -214,8 +186,15 @@ class PipelineExecutor:
         self.last_rc = result.returncode
 
     def run_pipeline(self, pipeline, parent_container_id=None):
-        container_id = self.start_container(pipeline, parent_container_id)
-        self.execute_block(pipeline["body"], container_id)
+        pipeline_name = pipeline.get("name")
+
+        if pipeline.get("helper_image"):
+            container_id = self.start_container(pipeline, parent_container_id)
+        else:
+            container_id = parent_container_id
+            print(f"Using parent container for pipeline '{pipeline_name}'")
+
+        self.execute_block(pipeline["body"], container_id, pipeline_name)
         self.stop_all_containers()
 
     def execute(self):
@@ -229,7 +208,6 @@ class PipelineExecutor:
             print("Execution exited early due to EXIT command.")
         finally:
             self.stop_all_containers()
-
 
     def execute_block(self, block, container_id, pipeline_name=None):
         """Executes a block of statements, ensuring IF/ELSE logic executes correctly."""
@@ -283,6 +261,7 @@ PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", na
 
     PIPELINE(name="deploy")
         MSG("Inner pipeline")
+        STEP step-envvar.sh
         EXIT
         MSG("End of Inner pipeline")
     END
