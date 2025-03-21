@@ -275,8 +275,10 @@ if __name__ == "__main__":
         parsed_ast = parser.get_ast()
         print(parsed_ast)
 
+        print("Parsed AST:")
         pprint.pprint(parsed_ast)
-        # sys.exit(1)
+        print("End of AST\n")
 
+        print("Executing pipeline...")
         executor = PipelineExecutor(parsed_ast)
         executor.execute()
