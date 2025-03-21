@@ -1,0 +1,13 @@
+PIPELINE(helper_image="debian:bookworm-slim", start_command="sleep infinity", name="compile-verify")
+
+    MSG("Starting steps")
+
+    $arch = "armv7"
+    IF $arch == "armv7":
+        STEP step-envvar.sh
+        MSG("arch supported")
+    ELSE:
+        MSG("arch not supported")
+    END
+
+END

@@ -199,12 +199,10 @@ class PipelineExecutor:
         self.stop_all_containers()
 
     def execute(self):
-        """Executes the parsed AST, ensuring proper pipeline and conditional execution."""
         try:
-            for node in self.ast:
-                if node["type"] == "PIPELINE":
-                    container_id = self.run_pipeline(node, parent_container_id=None)
-                    self.execute_block(node["body"], container_id, node["name"])
+            if len(self.ast) != 1 or self.ast[0]["type"] != "PIPELINE":
+                raise ValueError("Top-level AST must contain exactly one PIPELINE node")
+            self.run_pipeline(self.ast[0])
         except ExecutionStopped:
             print("Execution exited early due to EXIT command.")
         finally:
